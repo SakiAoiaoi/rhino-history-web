@@ -3,6 +3,24 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// ============================================================
+// PERIOD
+// 2026年 JST
+// ============================================================
+
+const SCAN_YEAR = 2026;
+const JST_OFFSET_SEC = 9 * 60 * 60;
+
+// 2026-01-01 00:00:00 JST
+const START_TIMESTAMP =
+  Math.floor(Date.UTC(SCAN_YEAR, 0, 1, 0, 0, 0) / 1000) -
+  JST_OFFSET_SEC;
+
+// 2027-01-01 00:00:00 JST
+const END_TIMESTAMP =
+  Math.floor(Date.UTC(SCAN_YEAR + 1, 0, 1, 0, 0, 0) / 1000) -
+  JST_OFFSET_SEC;
+
 
 // ============================================================
 // SETTINGS
@@ -19,17 +37,16 @@ const PAGE_SIZE = 1000;
 const MAX_TIME_DIFF_SEC =
   2 * 60 * 60;
 
-const MIN_AMOUNT_RATIO =
-  0.70;
+const MIN_AMOUNT_RATIO = 0.70;
+const MAX_AMOUNT_RATIO = 1.02;
 
-const MAX_AMOUNT_RATIO =
-  1.02;
+const AUTO_ASSIGN_MIN_SCORE = 80;
+const REVIEW_MIN_SCORE = 65;
 
-const AUTO_ASSIGN_MIN_SCORE =
-  80;
+const REQUEST_TIMEOUT_MS = 8000;
 
-const REVIEW_MIN_SCORE =
-  65;
+const CHAIN_CONCURRENCY = 4;
+const INTERNAL_CONCURRENCY = 4;
 
 
 // ============================================================
@@ -41,10 +58,13 @@ type ExplorerAction =
   | "tokentx"
   | "txlistinternal";
 
+type ProviderName =
+  | "Etherscan"
+  | "Routescan"
+  | "Blockscout";
 
 type ExplorerTx =
   Record<string, string | undefined>;
-
 
 type ChainConfig = {
   name: string;
@@ -53,11 +73,20 @@ type ChainConfig = {
   native: string;
 
   blockscout?: string;
+
+  providers: ProviderName[];
 };
 
+type HistoryResult = {
+  rows: ExplorerTx[];
+  provider: string;
+  warning?: string;
+};
 
 type ChainData = {
   config: ChainConfig;
+
+  startBlock: number;
 
   normal: ExplorerTx[];
   tokens: ExplorerTx[];
@@ -71,7 +100,6 @@ type ChainData = {
 
   warnings: string[];
 };
-
 
 type SourceRecord = {
   id: string;
@@ -90,10 +118,12 @@ type SourceRecord = {
   sourceTx: string;
 
   functionName: string;
-
   commitmentId: string;
-};
 
+  assetType:
+    | "ERC20"
+    | "NATIVE";
+};
 
 type IncomingRecord = {
   id: string;
@@ -120,12 +150,9 @@ type IncomingRecord = {
     | "INTERNAL";
 };
 
-
 type MatchEdge = {
   source: SourceRecord;
-
-  destination:
-    IncomingRecord;
+  destination: IncomingRecord;
 
   score: number;
 
@@ -136,13 +163,16 @@ type MatchEdge = {
     | "LOW";
 
   timeDiffSec: number;
-
   amountDiffPct: number;
 };
 
 
 // ============================================================
 // CHAINS
+//
+// Base / Optimism / Scroll → Blockscout
+// Avalanche → Routescan優先
+// その他 → Etherscan優先
 //
 // BNBは現在除外
 // ============================================================
@@ -154,6 +184,10 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0xbca3039a18c0d2f2f84ba8a028c67290bc045afa",
     native: "ETH",
+    providers: [
+      "Etherscan",
+      "Routescan",
+    ],
   },
 
   {
@@ -162,6 +196,10 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x10417734001162ea139e8b044dfe28dbb8b28ad0",
     native: "ETH",
+    providers: [
+      "Etherscan",
+      "Routescan",
+    ],
   },
 
   {
@@ -170,9 +208,11 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x2f59e9086ec8130e21bd052065a9e6b2497bb102",
     native: "ETH",
-
     blockscout:
       "https://base.blockscout.com/api",
+    providers: [
+      "Blockscout",
+    ],
   },
 
   {
@@ -181,9 +221,11 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x0bca65bf4b4c8803d2f0b49353ed57caaf3d66dc",
     native: "ETH",
-
     blockscout:
       "https://optimism.blockscout.com/api",
+    providers: [
+      "Blockscout",
+    ],
   },
 
   {
@@ -192,6 +234,10 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0xba4eee20f434bc3908a0b18da496348657133a7e",
     native: "POL",
+    providers: [
+      "Etherscan",
+      "Routescan",
+    ],
   },
 
   {
@@ -200,6 +246,10 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x5e023c31e1d3dcd08a1b3e8c96f6ef8aa8fcacd1",
     native: "AVAX",
+    providers: [
+      "Routescan",
+      "Etherscan",
+    ],
   },
 
   {
@@ -208,6 +258,10 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0xcf68a2721394dcf5dcf66f6265c1819720f24528",
     native: "ETH",
+    providers: [
+      "Etherscan",
+      "Routescan",
+    ],
   },
 
   {
@@ -216,9 +270,11 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x87627c7e586441eef9ee3c28b66662e897513f33",
     native: "ETH",
-
     blockscout:
       "https://scroll.blockscout.com/api",
+    providers: [
+      "Blockscout",
+    ],
   },
 
   {
@@ -227,6 +283,10 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x5e023c31e1d3dcd08a1b3e8c96f6ef8aa8fcacd1",
     native: "MNT",
+    providers: [
+      "Etherscan",
+      "Routescan",
+    ],
   },
 
   {
@@ -235,8 +295,23 @@ const CHAINS: ChainConfig[] = [
     bridge:
       "0x5e023c31e1d3dcd08a1b3e8c96f6ef8aa8fcacd1",
     native: "ETH",
+    providers: [
+      "Etherscan",
+      "Routescan",
+    ],
   },
 ];
+
+
+// ============================================================
+// CACHE
+//
+// 2026開始blockは同じなので
+// warm Vercel Functionでは再利用
+// ============================================================
+
+const startBlockCache =
+  new Map<number, number>();
 
 
 // ============================================================
@@ -273,10 +348,7 @@ function normalizeToken(
       "MNT": "MNT",
     };
 
-  return (
-    aliases[clean] ??
-    clean
-  );
+  return aliases[clean] ?? clean;
 }
 
 
@@ -284,15 +356,10 @@ function normalizeToken(
 // BASIC UTILS
 // ============================================================
 
-function sleep(
-  ms: number
-) {
+function sleep(ms: number) {
   return new Promise(
     (resolve) =>
-      setTimeout(
-        resolve,
-        ms
-      )
+      setTimeout(resolve, ms)
   );
 }
 
@@ -326,6 +393,16 @@ function timestampOf(
 }
 
 
+function isInPeriod(
+  timestamp: number
+) {
+  return (
+    timestamp >= START_TIMESTAMP &&
+    timestamp < END_TIMESTAMP
+  );
+}
+
+
 function functionNameOf(
   tx: ExplorerTx
 ) {
@@ -337,9 +414,7 @@ function functionNameOf(
   }
 
   return (
-    raw
-      .split("(")[0]
-      ?.trim() ??
+    raw.split("(")[0]?.trim() ??
     ""
   );
 }
@@ -359,9 +434,7 @@ function formatUnits(
         rawValue || "0"
       ).toString();
 
-    if (
-      decimals === 0
-    ) {
+    if (decimals === 0) {
       return digits;
     }
 
@@ -452,7 +525,7 @@ function dateJst(
 
 
 // ============================================================
-// ABI WORD
+// COMMITMENT ID
 // ============================================================
 
 function readAbiWord(
@@ -467,7 +540,6 @@ function readAbiWord(
       return "";
     }
 
-    // 0x + selector 4 bytes
     const payload =
       input.slice(10);
 
@@ -496,10 +568,6 @@ function readAbiWord(
 }
 
 
-// ============================================================
-// COMMITMENT ID
-// ============================================================
-
 function getCommitmentId(
   tx: ExplorerTx
 ) {
@@ -511,10 +579,8 @@ function getCommitmentId(
     tx.input ?? "";
 
   if (
-    fn ===
-    "depositwithid"
+    fn === "depositwithid"
   ) {
-    // address, amount, commitmentId
     return readAbiWord(
       input,
       2
@@ -522,10 +588,8 @@ function getCommitmentId(
   }
 
   if (
-    fn ===
-    "depositnativewithid"
+    fn === "depositnativewithid"
   ) {
-    // commitmentId
     return readAbiWord(
       input,
       0
@@ -533,8 +597,7 @@ function getCommitmentId(
   }
 
   if (
-    fn ===
-    "depositwithpermit"
+    fn === "depositwithpermit"
   ) {
     return readAbiWord(
       input,
@@ -547,72 +610,38 @@ function getCommitmentId(
 
 
 // ============================================================
-// EXPLORER RESPONSE HELPERS
-// ============================================================
-
-function noRecords(
-  data:
-    Record<string, unknown>
-) {
-  if (
-    Array.isArray(
-      data.result
-    ) &&
-    data.result.length === 0
-  ) {
-    return true;
-  }
-
-  const text =
-    (
-      String(
-        data.result ?? ""
-      ) +
-      " " +
-      String(
-        data.message ?? ""
-      )
-    ).toLowerCase();
-
-  return (
-    text.includes(
-      "no transactions found"
-    ) ||
-
-    text.includes(
-      "no records found"
-    ) ||
-
-    text.includes(
-      "no token transfers found"
-    )
-  );
-}
-
-
-// ============================================================
-// HTTP REQUEST
+// HTTP
 // ============================================================
 
 async function requestJson(
   url: string,
-  params:
-    URLSearchParams
+  params: URLSearchParams
 ) {
   let lastError = "";
 
   for (
     let attempt = 1;
-    attempt <= 4;
+    attempt <= 2;
     attempt++
   ) {
+    const controller =
+      new AbortController();
+
+    const timer =
+      setTimeout(
+        () =>
+          controller.abort(),
+        REQUEST_TIMEOUT_MS
+      );
+
     try {
       const response =
         await fetch(
           `${url}?${params.toString()}`,
           {
-            cache:
-              "no-store",
+            cache: "no-store",
+            signal:
+              controller.signal,
           }
         );
 
@@ -624,13 +653,10 @@ async function requestJson(
 
       try {
         data =
-          JSON.parse(
-            text
-          );
-
+          JSON.parse(text);
       } catch {
         throw new Error(
-          `Invalid JSON: ${text.slice(0, 150)}`
+          `Invalid JSON: ${text.slice(0, 120)}`
         );
       }
 
@@ -646,23 +672,28 @@ async function requestJson(
         ).toLowerCase();
 
       const rateLimited =
-        response.status ===
-          429 ||
-
+        response.status === 429 ||
         responseText.includes(
           "rate limit"
         ) ||
-
         responseText.includes(
           "max rate"
         );
 
       if (rateLimited) {
-        await sleep(
-          attempt * 1000
-        );
+        if (
+          attempt < 2
+        ) {
+          await sleep(
+            500 * attempt
+          );
 
-        continue;
+          continue;
+        }
+
+        throw new Error(
+          "API rate limit"
+        );
       }
 
       if (!response.ok) {
@@ -680,12 +711,17 @@ async function requestJson(
           : String(error);
 
       if (
-        attempt < 4
+        attempt < 2
       ) {
         await sleep(
-          attempt * 750
+          350 * attempt
         );
       }
+
+    } finally {
+      clearTimeout(
+        timer
+      );
     }
   }
 
@@ -697,138 +733,125 @@ async function requestJson(
 
 
 // ============================================================
-// ETHERSCAN V2 PAGE
+// PROVIDER URL
 // ============================================================
 
-async function etherscanPage(
+function getProviderUrl(
   config: ChainConfig,
-  action: ExplorerAction,
-  address: string,
-  page: number
+  provider: ProviderName
 ) {
   if (
-    !ETHERSCAN_API_KEY
+    provider ===
+    "Etherscan"
   ) {
-    throw new Error(
-      "ETHERSCAN_API_KEY is missing"
-    );
-  }
-
-  const params =
-    new URLSearchParams({
-      chainid:
-        String(
-          config.chainId
-        ),
-
-      module:
-        "account",
-
-      action,
-
-      address,
-
-      startblock:
-        "0",
-
-      endblock:
-        "9999999999",
-
-      page:
-        String(page),
-
-      offset:
-        String(
-          PAGE_SIZE
-        ),
-
-      sort:
-        "asc",
-
-      apikey:
-        ETHERSCAN_API_KEY,
-    });
-
-  const data =
-    await requestJson(
-      ETHERSCAN_URL,
-      params
-    );
-
-  if (
-    noRecords(data)
-  ) {
-    return [];
+    return ETHERSCAN_URL;
   }
 
   if (
-    String(
-      data.status ?? ""
-    ) !== "1"
+    provider ===
+    "Routescan"
   ) {
-    throw new Error(
-      `${data.message ?? ""} / ${data.result ?? ""}`
+    return (
+      "https://api.routescan.io/" +
+      "v2/network/mainnet/evm/" +
+      `${config.chainId}/` +
+      "etherscan/api"
     );
   }
 
   if (
-    !Array.isArray(
-      data.result
-    )
+    provider ===
+    "Blockscout"
   ) {
-    throw new Error(
-      "Unexpected Etherscan result"
-    );
+    if (
+      !config.blockscout
+    ) {
+      throw new Error(
+        "Blockscout not configured"
+      );
+    }
+
+    return config.blockscout;
   }
 
-  return (
-    data.result as ExplorerTx[]
+  throw new Error(
+    "Unknown provider"
   );
 }
 
 
 // ============================================================
-// ROUTESCAN PAGE
+// PROVIDER PARAMS
 // ============================================================
 
-async function routescanPage(
+function addProviderParams(
+  params: URLSearchParams,
   config: ChainConfig,
-  action: ExplorerAction,
-  address: string,
-  page: number
+  provider: ProviderName
+) {
+  if (
+    provider ===
+    "Etherscan"
+  ) {
+    if (
+      !ETHERSCAN_API_KEY
+    ) {
+      throw new Error(
+        "ETHERSCAN_API_KEY is missing"
+      );
+    }
+
+    params.set(
+      "chainid",
+      String(
+        config.chainId
+      )
+    );
+
+    params.set(
+      "apikey",
+      ETHERSCAN_API_KEY
+    );
+  }
+}
+
+
+// ============================================================
+// GET BLOCK BY TIME
+// ============================================================
+
+async function getStartBlockFromProvider(
+  config: ChainConfig,
+  provider: ProviderName
 ) {
   const url =
-    "https://api.routescan.io/" +
-    "v2/network/mainnet/evm/" +
-    `${config.chainId}/` +
-    "etherscan/api";
+    getProviderUrl(
+      config,
+      provider
+    );
 
   const params =
     new URLSearchParams({
       module:
-        "account",
+        "block",
 
-      action,
+      action:
+        "getblocknobytime",
 
-      address,
-
-      startblock:
-        "0",
-
-      endblock:
-        "9999999999",
-
-      page:
-        String(page),
-
-      offset:
+      timestamp:
         String(
-          PAGE_SIZE
+          START_TIMESTAMP
         ),
 
-      sort:
-        "asc",
+      closest:
+        "after",
     });
+
+  addProviderParams(
+    params,
+    config,
+    provider
+  );
 
   const data =
     await requestJson(
@@ -836,306 +859,122 @@ async function routescanPage(
       params
     );
 
+  const result =
+    data.result;
+
   if (
-    noRecords(data)
+    typeof result ===
+    "number"
   ) {
-    return [];
+    return result;
   }
 
   if (
-    String(
-      data.status ?? ""
-    ) !== "1"
+    typeof result ===
+    "string"
   ) {
-    throw new Error(
-      `${data.message ?? ""} / ${data.result ?? ""}`
-    );
-  }
-
-  if (
-    !Array.isArray(
-      data.result
-    )
-  ) {
-    throw new Error(
-      "Unexpected Routescan result"
-    );
-  }
-
-  return (
-    data.result as ExplorerTx[]
-  );
-}
-
-
-// ============================================================
-// BLOCKSCOUT PAGE
-// ============================================================
-
-async function blockscoutPage(
-  config: ChainConfig,
-  action: ExplorerAction,
-  address: string,
-  page: number
-) {
-  if (
-    !config.blockscout
-  ) {
-    throw new Error(
-      "Blockscout not configured"
-    );
-  }
-
-  const params =
-    new URLSearchParams({
-      module:
-        "account",
-
-      action,
-
-      address,
-
-      startblock:
-        "0",
-
-      endblock:
-        "9999999999",
-
-      page:
-        String(page),
-
-      offset:
-        String(
-          PAGE_SIZE
-        ),
-
-      sort:
-        "asc",
-    });
-
-  const data =
-    await requestJson(
-      config.blockscout,
-      params
-    );
-
-  if (
-    noRecords(data)
-  ) {
-    return [];
-  }
-
-  if (
-    String(
-      data.status ?? ""
-    ) !== "1"
-  ) {
-    throw new Error(
-      `${data.message ?? ""} / ${data.result ?? ""}`
-    );
-  }
-
-  if (
-    !Array.isArray(
-      data.result
-    )
-  ) {
-    throw new Error(
-      "Unexpected Blockscout result"
-    );
-  }
-
-  return (
-    data.result as ExplorerTx[]
-  );
-}
-
-
-// ============================================================
-// PAGINATION
-// ============================================================
-
-type PageFunction = (
-  config: ChainConfig,
-  action: ExplorerAction,
-  address: string,
-  page: number
-) => Promise<ExplorerTx[]>;
-
-
-async function allPages(
-  fn: PageFunction,
-  config: ChainConfig,
-  action: ExplorerAction,
-  address: string
-) {
-  const result:
-    ExplorerTx[] = [];
-
-  let page = 1;
-
-  while (true) {
-    const rows =
-      await fn(
-        config,
-        action,
-        address,
-        page
+    const match =
+      result.match(
+        /^\d+$/
       );
 
-    result.push(
-      ...rows
-    );
-
-    if (
-      rows.length <
-      PAGE_SIZE
-    ) {
-      break;
+    if (match) {
+      return Number(
+        result
+      );
     }
-
-    page++;
-
-    await sleep(
-      250
-    );
   }
 
-  return result;
+  if (
+    result &&
+    typeof result ===
+    "object"
+  ) {
+    const obj =
+      result as Record<
+        string,
+        unknown
+      >;
+
+    const candidate =
+      obj.blockNumber ??
+      obj.block_number ??
+      obj.number;
+
+    if (
+      typeof candidate ===
+      "number"
+    ) {
+      return candidate;
+    }
+
+    if (
+      typeof candidate ===
+      "string" &&
+      /^\d+$/.test(candidate)
+    ) {
+      return Number(
+        candidate
+      );
+    }
+  }
+
+  throw new Error(
+    `Cannot resolve 2026 start block`
+  );
 }
 
 
-// ============================================================
-// PROVIDER AUTO SELECT
-//
-// ★ 訂正版
-//
-// Base / Optimism / Scroll
-//   Blockscout
-//      ↓
-//   Etherscan
-//      ↓
-//   Routescan
-//
-// その他
-//   Etherscan
-//      ↓
-//   Routescan
-//
-// ★ 0件を返したProviderがあっても
-//   そこで終了せず、次のProviderも試す。
-// ============================================================
+async function resolveStartBlock(
+  config: ChainConfig
+) {
+  const cached =
+    startBlockCache.get(
+      config.chainId
+    );
 
-async function fetchHistory(
-  config: ChainConfig,
-  action: ExplorerAction,
-  address: string
-): Promise<{
-  rows: ExplorerTx[];
-  provider: string;
-}> {
-  const providers: {
-    name: string;
-    fn: PageFunction;
-  }[] =
-    config.blockscout
-      ? [
-          {
-            name:
-              "Blockscout",
+  if (
+    cached !== undefined
+  ) {
+    return {
+      startBlock:
+        cached,
 
-            fn:
-              blockscoutPage,
-          },
-
-          {
-            name:
-              "Etherscan",
-
-            fn:
-              etherscanPage,
-          },
-
-          {
-            name:
-              "Routescan",
-
-            fn:
-              routescanPage,
-          },
-        ]
-
-      : [
-          {
-            name:
-              "Etherscan",
-
-            fn:
-              etherscanPage,
-          },
-
-          {
-            name:
-              "Routescan",
-
-            fn:
-              routescanPage,
-          },
-        ];
-
+      warning:
+        "",
+    };
+  }
 
   const errors:
     string[] = [];
 
-  const emptyProviders:
-    string[] = [];
-
-
   for (
     const provider
-    of providers
+    of config.providers
   ) {
     try {
-      const rows =
-        await allPages(
-          provider.fn,
+      const block =
+        await getStartBlockFromProvider(
           config,
-          action,
-          address
+          provider
         );
 
-
-      // --------------------------------------------------------
-      // ★ 重要
-      //
-      // 以前:
-      // 0件でも成功扱いして return
-      //
-      // 今回:
-      // 0件なら次のExplorerも試す
-      // --------------------------------------------------------
-
-      if (
-        rows.length === 0
-      ) {
-        emptyProviders.push(
-          provider.name
-        );
-
-        continue;
-      }
-
+      startBlockCache.set(
+        config.chainId,
+        block
+      );
 
       return {
-        rows,
+        startBlock:
+          block,
 
-        provider:
-          provider.name,
+        warning:
+          "",
       };
 
     } catch (error) {
       errors.push(
-        `${provider.name}: ${
+        `${provider}: ${
           error instanceof Error
             ? error.message
             : String(error)
@@ -1144,174 +983,300 @@ async function fetchHistory(
     }
   }
 
+  // 取れなければ0にfallback。
+  // 正確性優先。
+  return {
+    startBlock:
+      0,
 
-  // ==========================================================
-  // 全Providerを試して、
-  // 少なくとも「正常な0件」があった場合は0件として返す
-  // ==========================================================
+    warning:
+      `${config.name}: 2026 start block lookup failed. ` +
+      `Fallback to block 0. ${errors.join(" | ")}`,
+  };
+}
 
+
+// ============================================================
+// HISTORY PAGE
+//
+// Blockscout internalのように
+// warning + result配列の場合も配列を採用
+// ============================================================
+
+async function historyPage(
+  config: ChainConfig,
+  provider: ProviderName,
+  action: ExplorerAction,
+  address: string,
+  startBlock: number,
+  page: number
+): Promise<{
+  rows: ExplorerTx[];
+  warning?: string;
+}> {
+  const url =
+    getProviderUrl(
+      config,
+      provider
+    );
+
+  const params =
+    new URLSearchParams({
+      module:
+        "account",
+
+      action,
+
+      address,
+
+      startblock:
+        String(
+          startBlock
+        ),
+
+      endblock:
+        "9999999999",
+
+      page:
+        String(page),
+
+      offset:
+        String(
+          PAGE_SIZE
+        ),
+
+      sort:
+        "asc",
+    });
+
+  addProviderParams(
+    params,
+    config,
+    provider
+  );
+
+  const data =
+    await requestJson(
+      url,
+      params
+    );
+
+  // 配列ならstatus=0でも利用
   if (
-    emptyProviders.length > 0
+    Array.isArray(
+      data.result
+    )
   ) {
-    return {
-      rows: [],
+    const rows =
+      data.result as ExplorerTx[];
 
-      provider:
-        `No records (${emptyProviders.join(", ")})`,
+    const message =
+      String(
+        data.message ?? ""
+      ).trim();
+
+    let warning:
+      string | undefined;
+
+    if (
+      rows.length > 0 &&
+      message &&
+      message.toUpperCase() !==
+        "OK"
+    ) {
+      warning =
+        message;
+    }
+
+    return {
+      rows,
+      warning,
     };
   }
 
+  const combined =
+    (
+      String(
+        data.result ?? ""
+      ) +
+      " " +
+      String(
+        data.message ?? ""
+      )
+    ).toLowerCase();
+
+  if (
+    combined.includes(
+      "no transactions found"
+    ) ||
+    combined.includes(
+      "no records found"
+    ) ||
+    combined.includes(
+      "no token transfers found"
+    )
+  ) {
+    return {
+      rows: [],
+    };
+  }
 
   throw new Error(
-    errors.join(" | ")
+    `${data.message ?? ""} / ${data.result ?? ""}`
   );
 }
 
 
 // ============================================================
-// LOAD ONE CHAIN
+// ALL PAGES
 // ============================================================
 
-async function loadChain(
+async function allPages(
   config: ChainConfig,
-  address: string
-): Promise<ChainData> {
-  const warnings:
-    string[] = [];
-
-
-  let normal:
+  provider: ProviderName,
+  action: ExplorerAction,
+  address: string,
+  startBlock: number
+) {
+  const result:
     ExplorerTx[] = [];
 
-  let tokens:
-    ExplorerTx[] = [];
+  let warning = "";
+  let page = 1;
 
-  let internal:
-    ExplorerTx[] = [];
-
-
-  let normalProvider = "";
-  let tokenProvider = "";
-  let internalProvider = "";
-
-
-  // ----------------------------------------------------------
-  // NORMAL
-  // ----------------------------------------------------------
-
-  try {
-    const result =
-      await fetchHistory(
+  while (true) {
+    const current =
+      await historyPage(
         config,
-        "txlist",
-        address
+        provider,
+        action,
+        address,
+        startBlock,
+        page
       );
 
-    normal =
-      result.rows;
-
-    normalProvider =
-      result.provider;
-
-  } catch (error) {
-    warnings.push(
-      `${config.name} normal: ${
-        error instanceof Error
-          ? error.message
-          : String(error)
-      }`
+    result.push(
+      ...current.rows
     );
+
+    if (
+      current.warning &&
+      !warning
+    ) {
+      warning =
+        current.warning;
+    }
+
+    if (
+      current.rows.length <
+      PAGE_SIZE
+    ) {
+      break;
+    }
+
+    page++;
   }
 
-
-  await sleep(
-    450
-  );
-
-
-  // ----------------------------------------------------------
-  // ERC20
-  // ----------------------------------------------------------
-
-  try {
-    const result =
-      await fetchHistory(
-        config,
-        "tokentx",
-        address
-      );
-
-    tokens =
-      result.rows;
-
-    tokenProvider =
-      result.provider;
-
-  } catch (error) {
-    warnings.push(
-      `${config.name} ERC20: ${
-        error instanceof Error
-          ? error.message
-          : String(error)
-      }`
+  // 念のためTimestampでも2026に限定
+  const filtered =
+    result.filter(
+      (tx) =>
+        isInPeriod(
+          timestampOf(tx)
+        )
     );
-  }
-
-
-  await sleep(
-    450
-  );
-
-
-  // ----------------------------------------------------------
-  // INTERNAL
-  // ----------------------------------------------------------
-
-  try {
-    const result =
-      await fetchHistory(
-        config,
-        "txlistinternal",
-        address
-      );
-
-    internal =
-      result.rows;
-
-    internalProvider =
-      result.provider;
-
-  } catch (error) {
-    warnings.push(
-      `${config.name} internal: ${
-        error instanceof Error
-          ? error.message
-          : String(error)
-      }`
-    );
-  }
-
 
   return {
-    config,
+    rows:
+      filtered,
 
-    normal,
-    tokens,
-    internal,
-
-    providers: {
-      normal:
-        normalProvider,
-
-      tokens:
-        tokenProvider,
-
-      internal:
-        internalProvider,
-    },
-
-    warnings,
+    warning,
   };
+}
+
+
+// ============================================================
+// FETCH HISTORY
+// ============================================================
+
+async function fetchHistory(
+  config: ChainConfig,
+  action: ExplorerAction,
+  address: string,
+  startBlock: number
+): Promise<HistoryResult> {
+  const errors:
+    string[] = [];
+
+  let hadEmpty =
+    false;
+
+  let firstEmptyProvider =
+    "";
+
+  for (
+    const provider
+    of config.providers
+  ) {
+    try {
+      const result =
+        await allPages(
+          config,
+          provider,
+          action,
+          address,
+          startBlock
+        );
+
+      if (
+        result.rows.length >
+        0
+      ) {
+        return {
+          rows:
+            result.rows,
+
+          provider,
+
+          warning:
+            result.warning,
+        };
+      }
+
+      hadEmpty =
+        true;
+
+      if (
+        !firstEmptyProvider
+      ) {
+        firstEmptyProvider =
+          provider;
+      }
+
+    } catch (error) {
+      errors.push(
+        `${provider}: ${
+          error instanceof Error
+            ? error.message
+            : String(error)
+        }`
+      );
+    }
+  }
+
+  if (hadEmpty) {
+    return {
+      rows: [],
+
+      provider:
+        firstEmptyProvider ||
+        "No records",
+    };
+  }
+
+  throw new Error(
+    errors.join(" | ")
+  );
 }
 
 
@@ -1325,11 +1290,8 @@ async function mapLimit<
 >(
   items: T[],
   limit: number,
-
   worker:
-    (
-      item: T
-    ) =>
+    (item: T) =>
       Promise<R>
 ) {
   const output =
@@ -1337,10 +1299,10 @@ async function mapLimit<
       items.length
     );
 
-  let nextIndex = 0;
+  let nextIndex =
+    0;
 
-
-  async function runWorker() {
+  async function runner() {
     while (true) {
       const index =
         nextIndex++;
@@ -1359,7 +1321,6 @@ async function mapLimit<
     }
   }
 
-
   await Promise.all(
     Array.from(
       {
@@ -1369,31 +1330,207 @@ async function mapLimit<
             items.length
           ),
       },
-
       () =>
-        runWorker()
+        runner()
     )
   );
-
 
   return output;
 }
 
 
 // ============================================================
-// BUILD RHINO SOURCE TX
+// LOAD NORMAL + ERC20
+//
+// ★ 同じchainの2種類も並列
+// ============================================================
+
+async function loadBasicChain(
+  config: ChainConfig,
+  address: string
+): Promise<ChainData> {
+  const warnings:
+    string[] = [];
+
+  const blockInfo =
+    await resolveStartBlock(
+      config
+    );
+
+  if (
+    blockInfo.warning
+  ) {
+    warnings.push(
+      blockInfo.warning
+    );
+  }
+
+  const startBlock =
+    blockInfo.startBlock;
+
+  const [
+    normalResult,
+    tokenResult,
+  ] =
+    await Promise.allSettled([
+      fetchHistory(
+        config,
+        "txlist",
+        address,
+        startBlock
+      ),
+
+      fetchHistory(
+        config,
+        "tokentx",
+        address,
+        startBlock
+      ),
+    ]);
+
+  let normal:
+    ExplorerTx[] = [];
+
+  let tokens:
+    ExplorerTx[] = [];
+
+  let normalProvider =
+    "";
+
+  let tokenProvider =
+    "";
+
+  if (
+    normalResult.status ===
+    "fulfilled"
+  ) {
+    normal =
+      normalResult.value.rows;
+
+    normalProvider =
+      normalResult.value.provider;
+
+    if (
+      normalResult.value.warning
+    ) {
+      warnings.push(
+        `${config.name} normal (${normalProvider}): ` +
+        normalResult.value.warning
+      );
+    }
+
+  } else {
+    warnings.push(
+      `${config.name} normal: ${normalResult.reason}`
+    );
+  }
+
+  if (
+    tokenResult.status ===
+    "fulfilled"
+  ) {
+    tokens =
+      tokenResult.value.rows;
+
+    tokenProvider =
+      tokenResult.value.provider;
+
+    if (
+      tokenResult.value.warning
+    ) {
+      warnings.push(
+        `${config.name} ERC20 (${tokenProvider}): ` +
+        tokenResult.value.warning
+      );
+    }
+
+  } else {
+    warnings.push(
+      `${config.name} ERC20: ${tokenResult.reason}`
+    );
+  }
+
+  return {
+    config,
+    startBlock,
+
+    normal,
+    tokens,
+
+    internal: [],
+
+    providers: {
+      normal:
+        normalProvider,
+
+      tokens:
+        tokenProvider,
+
+      internal:
+        "",
+    },
+
+    warnings,
+  };
+}
+
+
+// ============================================================
+// LOAD INTERNAL
+// ============================================================
+
+async function loadInternal(
+  chain:
+    ChainData,
+
+  address:
+    string
+) {
+  try {
+    const result =
+      await fetchHistory(
+        chain.config,
+        "txlistinternal",
+        address,
+        chain.startBlock
+      );
+
+    chain.internal =
+      result.rows;
+
+    chain.providers.internal =
+      result.provider;
+
+    if (
+      result.warning
+    ) {
+      chain.warnings.push(
+        `${chain.config.name} internal (${result.provider}): ${result.warning}`
+      );
+    }
+
+  } catch (error) {
+    chain.warnings.push(
+      `${chain.config.name} internal: ${
+        error instanceof Error
+          ? error.message
+          : String(error)
+      }`
+    );
+  }
+}
+
+
+// ============================================================
+// BUILD RHINO SOURCES
 // ============================================================
 
 function buildSources(
-  data:
-    ChainData[],
-
-  wallet:
-    string
+  data: ChainData[],
+  wallet: string
 ) {
   const sources:
     SourceRecord[] = [];
-
 
   for (
     const chain
@@ -1403,11 +1540,21 @@ function buildSources(
       chain.config.bridge
         .toLowerCase();
 
-
     for (
       const tx
       of chain.normal
     ) {
+      const timestamp =
+        timestampOf(tx);
+
+      if (
+        !isInPeriod(
+          timestamp
+        )
+      ) {
+        continue;
+      }
+
       if (
         normalizeAddress(
           tx.to
@@ -1416,20 +1563,12 @@ function buildSources(
         continue;
       }
 
-
       const hash =
         txHash(tx);
 
-
-      // ========================================================
-      // ERC20 deposit?
-      // ========================================================
-
       const relatedToken =
         chain.tokens.find(
-          (
-            tokenTx
-          ) =>
+          (tokenTx) =>
             txHash(
               tokenTx
             ) === hash &&
@@ -1443,43 +1582,40 @@ function buildSources(
             ) === bridge
         );
 
-
-      let token = "";
+      let token =
+        "";
 
       let amount =
         "0";
 
+      let assetType:
+        "ERC20" | "NATIVE" =
+        "NATIVE";
 
       if (
         relatedToken
       ) {
+        assetType =
+          "ERC20";
+
         token =
-          relatedToken
-            .tokenSymbol ??
+          relatedToken.tokenSymbol ??
           "";
 
         amount =
           formatUnits(
-            relatedToken
-              .value ??
+            relatedToken.value ??
               "0",
 
             Number(
-              relatedToken
-                .tokenDecimal ??
+              relatedToken.tokenDecimal ??
                 0
             )
           );
 
       } else {
-        // ======================================================
-        // Native deposit
-        // ======================================================
-
         const rawValue =
-          tx.value ??
-          "0";
-
+          tx.value ?? "0";
 
         if (
           BigInt(
@@ -1497,13 +1633,6 @@ function buildSources(
             );
         }
       }
-
-
-      const timestamp =
-        timestampOf(
-          tx
-        );
-
 
       sources.push({
         id:
@@ -1538,61 +1667,58 @@ function buildSources(
           hash,
 
         functionName:
-          functionNameOf(
-            tx
-          ),
+          functionNameOf(tx),
 
         commitmentId:
-          getCommitmentId(
-            tx
-          ),
+          getCommitmentId(tx),
+
+        assetType,
       });
     }
   }
 
-
   sources.sort(
-    (
-      a,
-      b
-    ) =>
+    (a, b) =>
       a.timestamp -
       b.timestamp
   );
-
 
   return sources;
 }
 
 
 // ============================================================
-// BUILD DESTINATION DATABASE
+// BUILD INCOMING
 // ============================================================
 
 function buildIncoming(
-  data:
-    ChainData[],
-
-  wallet:
-    string
+  data: ChainData[],
+  wallet: string
 ) {
   const incoming:
     IncomingRecord[] = [];
-
 
   for (
     const chain
     of data
   ) {
 
-    // ========================================================
     // ERC20
-    // ========================================================
-
     for (
       const tx
       of chain.tokens
     ) {
+      const timestamp =
+        timestampOf(tx);
+
+      if (
+        !isInPeriod(
+          timestamp
+        )
+      ) {
+        continue;
+      }
+
       if (
         normalizeAddress(
           tx.to
@@ -1601,22 +1727,15 @@ function buildIncoming(
         continue;
       }
 
-
       const hash =
-        txHash(
-          tx
-        );
-
+        txHash(tx);
 
       const token =
-        tx.tokenSymbol ??
-        "";
-
+        tx.tokenSymbol ?? "";
 
       const amount =
         formatUnits(
-          tx.value ??
-            "0",
+          tx.value ?? "0",
 
           Number(
             tx.tokenDecimal ??
@@ -1624,26 +1743,11 @@ function buildIncoming(
           )
         );
 
-
-      const timestamp =
-        timestampOf(
-          tx
-        );
-
-
-      const extra =
-        tx.logIndex ??
-        tx.transactionIndex ??
-        "";
-
-
       incoming.push({
         id:
-          `${chain.config.name}` +
-          `|ERC20|${hash}` +
-          `|${extra}` +
-          `|${tx.contractAddress ?? ""}` +
-          `|${amount}`,
+          `${chain.config.name}|ERC20|${hash}|` +
+          `${tx.logIndex ?? tx.transactionIndex ?? ""}|` +
+          `${tx.contractAddress ?? ""}|${amount}`,
 
         timestamp,
 
@@ -1686,14 +1790,22 @@ function buildIncoming(
     }
 
 
-    // ========================================================
     // NORMAL NATIVE
-    // ========================================================
-
     for (
       const tx
       of chain.normal
     ) {
+      const timestamp =
+        timestampOf(tx);
+
+      if (
+        !isInPeriod(
+          timestamp
+        )
+      ) {
+        continue;
+      }
+
       if (
         normalizeAddress(
           tx.to
@@ -1702,11 +1814,8 @@ function buildIncoming(
         continue;
       }
 
-
       const raw =
-        tx.value ??
-        "0";
-
+        tx.value ?? "0";
 
       if (
         BigInt(
@@ -1717,31 +1826,18 @@ function buildIncoming(
         continue;
       }
 
-
       const amount =
         formatUnits(
           raw,
           18
         );
 
-
-      const timestamp =
-        timestampOf(
-          tx
-        );
-
-
       const hash =
-        txHash(
-          tx
-        );
-
+        txHash(tx);
 
       incoming.push({
         id:
-          `${chain.config.name}` +
-          `|NATIVE|${hash}` +
-          `|${amount}`,
+          `${chain.config.name}|NATIVE|${hash}|${amount}`,
 
         timestamp,
 
@@ -1785,14 +1881,22 @@ function buildIncoming(
     }
 
 
-    // ========================================================
-    // INTERNAL NATIVE
-    // ========================================================
-
+    // INTERNAL
     for (
       const tx
       of chain.internal
     ) {
+      const timestamp =
+        timestampOf(tx);
+
+      if (
+        !isInPeriod(
+          timestamp
+        )
+      ) {
+        continue;
+      }
+
       if (
         normalizeAddress(
           tx.to
@@ -1801,11 +1905,8 @@ function buildIncoming(
         continue;
       }
 
-
       const raw =
-        tx.value ??
-        "0";
-
+        tx.value ?? "0";
 
       if (
         BigInt(
@@ -1816,38 +1917,19 @@ function buildIncoming(
         continue;
       }
 
-
       const amount =
         formatUnits(
           raw,
           18
         );
 
-
-      const timestamp =
-        timestampOf(
-          tx
-        );
-
-
       const hash =
-        txHash(
-          tx
-        );
-
-
-      const extra =
-        tx.traceId ??
-        tx.index ??
-        "";
-
+        txHash(tx);
 
       incoming.push({
         id:
-          `${chain.config.name}` +
-          `|INTERNAL|${hash}` +
-          `|${extra}` +
-          `|${amount}`,
+          `${chain.config.name}|INTERNAL|${hash}|` +
+          `${tx.traceId ?? tx.index ?? ""}|${amount}`,
 
         timestamp,
 
@@ -1893,7 +1975,7 @@ function buildIncoming(
 
 
   // ==========================================================
-  // EXACT DUPLICATE REMOVE
+  // DEDUPE
   // ==========================================================
 
   const unique =
@@ -1901,7 +1983,6 @@ function buildIncoming(
       string,
       IncomingRecord
     >();
-
 
   for (
     const item
@@ -1913,7 +1994,6 @@ function buildIncoming(
     );
   }
 
-
   return [
     ...unique.values(),
   ];
@@ -1921,32 +2001,19 @@ function buildIncoming(
 
 
 // ============================================================
-// SCORE ONE CANDIDATE
+// MATCH SCORE
 // ============================================================
 
 function scoreCandidate(
-  source:
-    SourceRecord,
-
-  destination:
-    IncomingRecord
+  source: SourceRecord,
+  destination: IncomingRecord
 ): MatchEdge | null {
-
-  // ==========================================================
-  // Same chain = no
-  // ==========================================================
-
   if (
     source.fromChain ===
     destination.chain
   ) {
     return null;
   }
-
-
-  // ==========================================================
-  // Token family must match
-  // ==========================================================
 
   if (
     source.normalizedToken !==
@@ -1955,7 +2022,6 @@ function scoreCandidate(
     return null;
   }
 
-
   if (
     source.amountNumber <= 0 ||
     destination.amountNumber <= 0
@@ -1963,59 +2029,30 @@ function scoreCandidate(
     return null;
   }
 
-
-  // ==========================================================
-  // Time
-  // ==========================================================
-
   const timeDiffSec =
     destination.timestamp -
     source.timestamp;
 
-
   if (
-    timeDiffSec < -30
-  ) {
-    return null;
-  }
-
-
-  if (
+    timeDiffSec < -30 ||
     timeDiffSec >
-    MAX_TIME_DIFF_SEC
+      MAX_TIME_DIFF_SEC
   ) {
     return null;
   }
-
-
-  // ==========================================================
-  // Amount ratio
-  // ==========================================================
 
   const ratio =
     destination.amountNumber /
     source.amountNumber;
 
-
   if (
     ratio <
-    MIN_AMOUNT_RATIO
-  ) {
-    return null;
-  }
-
-
-  if (
+      MIN_AMOUNT_RATIO ||
     ratio >
-    MAX_AMOUNT_RATIO
+      MAX_AMOUNT_RATIO
   ) {
     return null;
   }
-
-
-  // ==========================================================
-  // Difference %
-  // ==========================================================
 
   const amountDiffPct =
     Math.abs(
@@ -2025,49 +2062,33 @@ function scoreCandidate(
     source.amountNumber *
     100;
 
-
-  // ==========================================================
-  // SCORE
-  // ==========================================================
-
   let score =
     100;
-
 
   const timePenalty =
     Math.min(
       30,
-
-      (
-        Math.abs(
-          timeDiffSec
-        ) /
-        MAX_TIME_DIFF_SEC
-      ) *
-      30
+      Math.abs(
+        timeDiffSec
+      ) /
+        MAX_TIME_DIFF_SEC *
+        30
     );
-
 
   const amountPenalty =
     Math.min(
       50,
-
-      amountDiffPct *
-      3
+      amountDiffPct * 3
     );
-
 
   score -=
     timePenalty;
 
-
   score -=
     amountPenalty;
 
-
   let confidence:
     MatchEdge["confidence"];
-
 
   if (
     score >= 90
@@ -2092,24 +2113,19 @@ function scoreCandidate(
       "LOW";
   }
 
-
   return {
     source,
     destination,
-
     score,
-
     confidence,
-
     timeDiffSec,
-
     amountDiffPct,
   };
 }
 
 
 // ============================================================
-// BUILD ALL CANDIDATE EDGES
+// BUILD CANDIDATES
 // ============================================================
 
 function buildEdges(
@@ -2122,13 +2138,11 @@ function buildEdges(
   const edges:
     MatchEdge[] = [];
 
-
   const bySource =
     new Map<
       string,
       MatchEdge[]
     >();
-
 
   for (
     const source
@@ -2136,7 +2150,6 @@ function buildEdges(
   ) {
     const current:
       MatchEdge[] = [];
-
 
     for (
       const destination
@@ -2148,59 +2161,36 @@ function buildEdges(
           destination
         );
 
-
-      if (
-        !edge
-      ) {
+      if (!edge) {
         continue;
       }
-
 
       edges.push(
         edge
       );
-
 
       current.push(
         edge
       );
     }
 
-
     current.sort(
-      (
-        a,
-        b
-      ) => {
-        if (
-          b.score !==
-          a.score
-        ) {
-          return (
-            b.score -
-            a.score
-          );
-        }
-
-
-        return (
-          Math.abs(
-            a.timeDiffSec
-          ) -
+      (a, b) =>
+        b.score -
+          a.score ||
+        Math.abs(
+          a.timeDiffSec
+        ) -
           Math.abs(
             b.timeDiffSec
           )
-        );
-      }
     );
-
 
     bySource.set(
       source.id,
       current
     );
   }
-
 
   return {
     edges,
@@ -2210,7 +2200,7 @@ function buildEdges(
 
 
 // ============================================================
-// GLOBAL ONE-TO-ONE
+// ONE TO ONE
 // ============================================================
 
 function assignOneToOne(
@@ -2220,54 +2210,25 @@ function assignOneToOne(
   const eligible =
     edges
       .filter(
-        (
-          edge
-        ) =>
+        (edge) =>
           edge.score >=
           AUTO_ASSIGN_MIN_SCORE
       )
       .sort(
-        (
-          a,
-          b
-        ) => {
-          if (
-            b.score !==
-            a.score
-          ) {
-            return (
-              b.score -
-              a.score
-            );
-          }
+        (a, b) =>
+          b.score -
+            a.score ||
 
-
-          if (
-            Math.abs(
-              a.timeDiffSec
-            ) !==
+          Math.abs(
+            a.timeDiffSec
+          ) -
             Math.abs(
               b.timeDiffSec
-            )
-          ) {
-            return (
-              Math.abs(
-                a.timeDiffSec
-              ) -
-              Math.abs(
-                b.timeDiffSec
-              )
-            );
-          }
+            ) ||
 
-
-          return (
-            a.amountDiffPct -
+          a.amountDiffPct -
             b.amountDiffPct
-          );
-        }
       );
-
 
   const assignments =
     new Map<
@@ -2275,14 +2236,11 @@ function assignOneToOne(
       MatchEdge
     >();
 
-
   const usedSources =
     new Set<string>();
 
-
   const usedDestinations =
     new Set<string>();
-
 
   for (
     const edge
@@ -2296,7 +2254,6 @@ function assignOneToOne(
       continue;
     }
 
-
     if (
       usedDestinations.has(
         edge.destination.id
@@ -2305,23 +2262,19 @@ function assignOneToOne(
       continue;
     }
 
-
     assignments.set(
       edge.source.id,
       edge
     );
 
-
     usedSources.add(
       edge.source.id
     );
-
 
     usedDestinations.add(
       edge.destination.id
     );
   }
-
 
   return {
     assignments,
@@ -2355,23 +2308,13 @@ function buildRows(
 ) {
   const rows =
     sources.map(
-      (
-        source
-      ) => {
-
+      (source) => {
         const assigned =
           assignments.get(
             source.id
           );
 
-
-        // ====================================================
-        // AUTO MATCH
-        // ====================================================
-
-        if (
-          assigned
-        ) {
+        if (assigned) {
           return {
             dateJst:
               source.dateJst,
@@ -2380,9 +2323,7 @@ function buildRows(
               source.fromChain,
 
             toChain:
-              assigned
-                .destination
-                .chain,
+              assigned.destination.chain,
 
             token:
               source.token,
@@ -2391,88 +2332,67 @@ function buildRows(
               source.amountIn,
 
             amountOut:
-              assigned
-                .destination
-                .amount,
+              assigned.destination.amount,
 
             amountDifference:
               (
                 source.amountNumber -
-                assigned
-                  .destination
-                  .amountNumber
+                assigned.destination.amountNumber
               ).toString(),
 
             amountDiffPct:
               Number(
-                assigned
-                  .amountDiffPct
-                  .toFixed(6)
+                assigned.amountDiffPct.toFixed(
+                  6
+                )
               ),
 
             travelTimeSec:
-              assigned
-                .timeDiffSec,
+              assigned.timeDiffSec,
 
             status:
               "AUTO_MATCH",
 
             confidence:
-              assigned
-                .confidence,
+              assigned.confidence,
 
+            // UIでは非表示だが内部には残す
             score:
               Number(
-                assigned
-                  .score
-                  .toFixed(2)
+                assigned.score.toFixed(
+                  2
+                )
               ),
 
             functionName:
-              source
-                .functionName,
+              source.functionName,
 
             commitmentId:
-              source
-                .commitmentId,
+              source.commitmentId,
 
             sourceTx:
-              source
-                .sourceTx,
+              source.sourceTx,
 
             destinationTx:
-              assigned
-                .destination
-                .txHash,
+              assigned.destination.txHash,
 
             destinationFrom:
-              assigned
-                .destination
-                .from,
+              assigned.destination.from,
           };
         }
-
-
-        // ====================================================
-        // UNASSIGNED
-        // ====================================================
 
         const candidates =
           bySource.get(
             source.id
           ) ?? [];
 
-
         const bestAvailable =
           candidates.find(
-            (
-              edge
-            ) =>
+            (edge) =>
               !usedDestinations.has(
                 edge.destination.id
               )
           );
-
 
         const isReview =
           Boolean(
@@ -2480,7 +2400,6 @@ function buildRows(
             bestAvailable.score >=
               REVIEW_MIN_SCORE
           );
-
 
         return {
           dateJst:
@@ -2517,33 +2436,28 @@ function buildRows(
 
           confidence:
             isReview
-              ? (
-                  bestAvailable
-                    ?.confidence ??
-                  "MEDIUM"
-                )
+              ? bestAvailable?.confidence ??
+                "MEDIUM"
               : "NONE",
 
           score:
-            isReview
+            isReview &&
+            bestAvailable
               ? Number(
-                  bestAvailable!
-                    .score
-                    .toFixed(2)
+                  bestAvailable.score.toFixed(
+                    2
+                  )
                 )
               : null,
 
           functionName:
-            source
-              .functionName,
+            source.functionName,
 
           commitmentId:
-            source
-              .commitmentId,
+            source.commitmentId,
 
           sourceTx:
-            source
-              .sourceTx,
+            source.sourceTx,
 
           destinationTx:
             "",
@@ -2554,18 +2468,12 @@ function buildRows(
       }
     );
 
-
-  // 新しい順
   return rows.reverse();
 }
 
 
 // ============================================================
-// CHAIN DEBUG INFO
-//
-// APIレスポンスに各Providerと件数も含める。
-// UIでは使わなくてもOK。
-// Baseの確認に便利。
+// CHAIN STATS
 // ============================================================
 
 function buildChainStats(
@@ -2573,11 +2481,12 @@ function buildChainStats(
     ChainData[]
 ) {
   return data.map(
-    (
-      chain
-    ) => ({
+    (chain) => ({
       chain:
         chain.config.name,
+
+      startBlock:
+        chain.startBlock,
 
       normal:
         chain.normal.length,
@@ -2605,24 +2514,16 @@ export async function POST(
   const startedAt =
     Date.now();
 
-
   try {
     const body =
       await request.json();
 
-
     const wallet =
       String(
-        body.address ??
-        ""
+        body.address ?? ""
       )
         .trim()
         .toLowerCase();
-
-
-    // ========================================================
-    // VALIDATION
-    // ========================================================
 
     if (
       !/^0x[a-f0-9]{40}$/.test(
@@ -2634,14 +2535,12 @@ export async function POST(
           error:
             "Invalid EVM wallet address",
         },
-
         {
           status:
             400,
         }
       );
     }
-
 
     if (
       !ETHERSCAN_API_KEY
@@ -2651,7 +2550,6 @@ export async function POST(
           error:
             "ETHERSCAN_API_KEY is not configured on the server.",
         },
-
         {
           status:
             500,
@@ -2661,18 +2559,17 @@ export async function POST(
 
 
     // ========================================================
-    // LOAD ALL CHAINS
+    // STEP 1
+    // 2026年 Normal + ERC20
     // ========================================================
 
     const chainData =
       await mapLimit(
         CHAINS,
-        2,
+        CHAIN_CONCURRENCY,
 
-        (
-          config
-        ) =>
-          loadChain(
+        (config) =>
+          loadBasicChain(
             config,
             wallet
           )
@@ -2680,10 +2577,11 @@ export async function POST(
 
 
     // ========================================================
-    // RHINO SOURCE TX
+    // STEP 2
+    // SOURCEを先に確定
     // ========================================================
 
-    const sources =
+    let sources =
       buildSources(
         chainData,
         wallet
@@ -2691,6 +2589,73 @@ export async function POST(
 
 
     // ========================================================
+    // STEP 3
+    // Native bridgeがある場合だけInternal取得
+    //
+    // しかも同じNative Assetを持つchainだけ。
+    //
+    // 例:
+    // ETHなら Ethereum / Arb / Base / OP /
+    // Linea / Scroll / Blast など
+    // ========================================================
+
+    const requiredNativeTokens =
+      new Set(
+        sources
+          .filter(
+            (source) =>
+              source.assetType ===
+              "NATIVE"
+          )
+          .map(
+            (source) =>
+              source.normalizedToken
+          )
+      );
+
+
+    const chainsNeedingInternal =
+      chainData.filter(
+        (chain) =>
+          requiredNativeTokens.has(
+            normalizeToken(
+              chain.config.native
+            )
+          )
+      );
+
+
+    if (
+      chainsNeedingInternal.length >
+      0
+    ) {
+      await mapLimit(
+        chainsNeedingInternal,
+        INTERNAL_CONCURRENCY,
+
+        async (chain) => {
+          await loadInternal(
+            chain,
+            wallet
+          );
+
+          return true;
+        }
+      );
+    }
+
+
+    // Source自体は変わらないが
+    // 念のため再構築
+    sources =
+      buildSources(
+        chainData,
+        wallet
+      );
+
+
+    // ========================================================
+    // STEP 4
     // DESTINATION DB
     // ========================================================
 
@@ -2702,7 +2667,8 @@ export async function POST(
 
 
     // ========================================================
-    // MATCH CANDIDATES
+    // STEP 5
+    // MATCH
     // ========================================================
 
     const {
@@ -2715,10 +2681,6 @@ export async function POST(
       );
 
 
-    // ========================================================
-    // ONE TO ONE
-    // ========================================================
-
     const {
       assignments,
       usedDestinations,
@@ -2727,10 +2689,6 @@ export async function POST(
         edges
       );
 
-
-    // ========================================================
-    // FINAL ROWS
-    // ========================================================
 
     const rows =
       buildRows(
@@ -2747,76 +2705,48 @@ export async function POST(
 
     const autoMatched =
       rows.filter(
-        (
-          row
-        ) =>
+        (row) =>
           row.status ===
           "AUTO_MATCH"
       ).length;
 
-
     const veryHigh =
       rows.filter(
-        (
-          row
-        ) =>
+        (row) =>
           row.status ===
             "AUTO_MATCH" &&
-
           row.confidence ===
             "VERY_HIGH"
       ).length;
 
-
     const high =
       rows.filter(
-        (
-          row
-        ) =>
+        (row) =>
           row.status ===
             "AUTO_MATCH" &&
-
           row.confidence ===
             "HIGH"
       ).length;
 
-
     const review =
       rows.filter(
-        (
-          row
-        ) =>
+        (row) =>
           row.status ===
           "REVIEW"
       ).length;
 
-
     const unresolved =
       rows.filter(
-        (
-          row
-        ) =>
+        (row) =>
           row.status ===
           "UNRESOLVED"
       ).length;
 
-
-    // ========================================================
-    // WARNINGS
-    // ========================================================
-
     const warnings =
       chainData.flatMap(
-        (
-          data
-        ) =>
-          data.warnings
+        (chain) =>
+          chain.warnings
       );
-
-
-    // ========================================================
-    // DEBUG STATS
-    // ========================================================
 
     const chainStats =
       buildChainStats(
@@ -2824,31 +2754,40 @@ export async function POST(
       );
 
 
-    // Vercel Runtime Logsでも確認できる
     console.log(
-      "RHINO SCAN SUMMARY",
+      "RHINO 2026 SCAN",
       {
         wallet,
-
-        sources:
+        bridgeTx:
           sources.length,
-
         incoming:
           incoming.length,
-
         autoMatched,
-
         review,
-
         unresolved,
-
-        chainStats,
+        scanTimeMs:
+          Date.now() -
+          startedAt,
       }
     );
 
 
     return NextResponse.json({
       wallet,
+
+      period: {
+        year:
+          SCAN_YEAR,
+
+        timezone:
+          "Asia/Tokyo",
+
+        start:
+          "2026-01-01 00:00:00 JST",
+
+        end:
+          "2026-12-31 23:59:59 JST",
+      },
 
       summary: {
         bridgeTx:
@@ -2892,7 +2831,6 @@ export async function POST(
       error
     );
 
-
     return NextResponse.json(
       {
         error:
@@ -2900,7 +2838,6 @@ export async function POST(
             ? error.message
             : "Unknown scan error",
       },
-
       {
         status:
           500,
