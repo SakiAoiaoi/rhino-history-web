@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useState,
+} from "react";
 
 
 type ResultRow = {
@@ -47,21 +49,21 @@ type ResultRow = {
 type ScanResult = {
   wallet: string;
 
+  period: {
+    year: number;
+    timezone: string;
+    start: string;
+    end: string;
+  };
+
   summary: {
     bridgeTx: number;
-
     autoMatched: number;
-
     veryHigh: number;
-
     high: number;
-
     review: number;
-
     unresolved: number;
-
     incomingTransactions: number;
-
     candidatePairs: number;
   };
 
@@ -123,7 +125,6 @@ function downloadHistoryCsv(
     "Travel Time Sec",
     "Status",
     "Confidence",
-    "Score",
     "Function",
     "Commitment ID",
     "Source TX",
@@ -147,13 +148,14 @@ function downloadHistoryCsv(
           row.travelTimeSec,
           row.status,
           row.confidence,
-          row.score,
           row.functionName,
           row.commitmentId,
           row.sourceTx,
           row.destinationTx,
         ]
-          .map(csvEscape)
+          .map(
+            csvEscape
+          )
           .join(",")
     ),
   ];
@@ -187,10 +189,11 @@ function downloadHistoryCsv(
       10
     );
 
-  anchor.href = url;
+  anchor.href =
+    url;
 
   anchor.download =
-    `rhino-history-${shortWallet}.csv`;
+    `rhino-history-2026-${shortWallet}.csv`;
 
   document.body.appendChild(
     anchor
@@ -234,40 +237,37 @@ function explorerTxUrl(
   }
 
   const explorers:
-    Record<
-      string,
-      string
-    > = {
-    Ethereum:
-      "https://etherscan.io/tx/",
+    Record<string, string> = {
+      Ethereum:
+        "https://etherscan.io/tx/",
 
-    Arbitrum:
-      "https://arbiscan.io/tx/",
+      Arbitrum:
+        "https://arbiscan.io/tx/",
 
-    Base:
-      "https://basescan.org/tx/",
+      Base:
+        "https://basescan.org/tx/",
 
-    Optimism:
-      "https://optimistic.etherscan.io/tx/",
+      Optimism:
+        "https://optimistic.etherscan.io/tx/",
 
-    Polygon:
-      "https://polygonscan.com/tx/",
+      Polygon:
+        "https://polygonscan.com/tx/",
 
-    Avalanche:
-      "https://snowtrace.io/tx/",
+      Avalanche:
+        "https://snowtrace.io/tx/",
 
-    Linea:
-      "https://lineascan.build/tx/",
+      Linea:
+        "https://lineascan.build/tx/",
 
-    Scroll:
-      "https://scrollscan.com/tx/",
+      Scroll:
+        "https://scrollscan.com/tx/",
 
-    Mantle:
-      "https://mantlescan.xyz/tx/",
+      Mantle:
+        "https://mantlescan.xyz/tx/",
 
-    Blast:
-      "https://blastscan.io/tx/",
-  };
+      Blast:
+        "https://blastscan.io/tx/",
+    };
 
   const base =
     explorers[chain];
@@ -276,9 +276,7 @@ function explorerTxUrl(
     return "";
   }
 
-  return (
-    base + hash
-  );
+  return base + hash;
 }
 
 
@@ -343,12 +341,9 @@ function badgeLabel(
     return "REVIEW";
   }
 
-  return (
-    row.confidence
-      .replace(
-        "_",
-        " "
-      )
+  return row.confidence.replace(
+    "_",
+    " "
   );
 }
 
@@ -374,7 +369,8 @@ export default function Home() {
   const [
     error,
     setError,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     loading,
@@ -400,14 +396,8 @@ export default function Home() {
     }
 
     setError("");
-
-    setResult(
-      null
-    );
-
-    setLoading(
-      true
-    );
+    setResult(null);
+    setLoading(true);
 
     try {
       const response =
@@ -423,26 +413,43 @@ export default function Home() {
             },
 
             body:
-              JSON.stringify(
-                {
-                  address,
-                }
-              ),
+              JSON.stringify({
+                address,
+              }),
           }
         );
 
-      const data =
-        await response.json();
+      const responseText =
+        await response.text();
+
+      let data:
+        ScanResult |
+        { error?: string };
+
+      try {
+        data =
+          JSON.parse(
+            responseText
+          );
+
+      } catch {
+        throw new Error(
+          responseText ||
+          `Server returned HTTP ${response.status}`
+        );
+      }
 
       if (!response.ok) {
         throw new Error(
-          data.error ??
-          "Scan failed"
+          "error" in data &&
+          data.error
+            ? data.error
+            : `Scan failed: HTTP ${response.status}`
         );
       }
 
       setResult(
-        data
+        data as ScanResult
       );
 
     } catch (err) {
@@ -453,9 +460,7 @@ export default function Home() {
       );
 
     } finally {
-      setLoading(
-        false
-      );
+      setLoading(false);
     }
   }
 
@@ -469,9 +474,7 @@ export default function Home() {
       "
     >
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+      {/* HEADER */}
 
       <header
         className="
@@ -538,16 +541,38 @@ export default function Home() {
 
           <div
             className="
-              rounded-full
-              bg-emerald-50
-              px-3
-              py-1
-              text-xs
-              font-medium
-              text-emerald-700
+              flex
+              items-center
+              gap-2
             "
           >
-            Read Only
+            <span
+              className="
+                rounded-full
+                bg-indigo-50
+                px-3
+                py-1
+                text-xs
+                font-medium
+                text-indigo-700
+              "
+            >
+              2026 Only
+            </span>
+
+            <span
+              className="
+                rounded-full
+                bg-emerald-50
+                px-3
+                py-1
+                text-xs
+                font-medium
+                text-emerald-700
+              "
+            >
+              Read Only
+            </span>
           </div>
         </div>
       </header>
@@ -562,9 +587,7 @@ export default function Home() {
         "
       >
 
-        {/* =====================================================
-            HERO
-        ===================================================== */}
+        {/* HERO */}
 
         <section
           className="mb-8"
@@ -590,14 +613,12 @@ export default function Home() {
             "
           >
             EVMウォレットから
-
             <br
               className="
                 hidden
                 md:block
               "
             />
-
             Rhino Bridge履歴をまとめて確認
           </h2>
 
@@ -611,16 +632,13 @@ export default function Home() {
             "
           >
             ウォレット接続や秘密鍵は不要です。
-            アドレスを入力するだけで、
-            複数チェーンのRhino.fi
-            ブリッジ履歴を検索します。
+            現在は2026年分のRhino.fi
+            ブリッジ履歴に限定して高速検索します。
           </p>
         </section>
 
 
-        {/* =====================================================
-            SEARCH
-        ===================================================== */}
+        {/* SEARCH */}
 
         <section
           className="
@@ -632,16 +650,40 @@ export default function Home() {
             shadow-sm
           "
         >
-          <label
+          <div
             className="
-              mb-2
-              block
-              text-sm
-              font-semibold
+              mb-4
+              flex
+              flex-wrap
+              items-center
+              justify-between
+              gap-2
             "
           >
-            Wallet Address
-          </label>
+            <label
+              className="
+                text-sm
+                font-semibold
+              "
+            >
+              Wallet Address
+            </label>
+
+            <span
+              className="
+                rounded-lg
+                bg-slate-100
+                px-3
+                py-1.5
+                text-xs
+                font-medium
+                text-slate-600
+              "
+            >
+              2026-01-01 00:00 JST → Present
+            </span>
+          </div>
+
 
           <div
             className="
@@ -763,8 +805,7 @@ export default function Home() {
                   "
                 />
 
-                10チェーンから履歴を検索しています。
-                少し時間がかかります。
+                2026年分を検索しています…
               </div>
             )
           }
@@ -772,23 +813,27 @@ export default function Home() {
 
           {
             error && (
-              <p
+              <div
                 className="
-                  mt-3
+                  mt-4
+                  break-words
+                  rounded-xl
+                  bg-red-50
+                  px-4
+                  py-3
                   text-sm
-                  font-medium
-                  text-red-600
+                  text-red-700
                 "
               >
                 {error}
-              </p>
+              </div>
             )
           }
 
 
           <p
             className="
-              mt-3
+              mt-4
               text-xs
               text-slate-500
             "
@@ -810,9 +855,7 @@ export default function Home() {
         </section>
 
 
-        {/* =====================================================
-            EMPTY STATE
-        ===================================================== */}
+        {/* EMPTY */}
 
         {
           !result &&
@@ -847,23 +890,19 @@ export default function Home() {
                   text-slate-400
                 "
               >
-                Rhino.fi Bridgeの送信TXと
-                Destination候補を検索します。
+                2026年のRhino.fi
+                Bridge履歴を検索します。
               </p>
             </section>
           )
         }
 
 
-        {/* =====================================================
-            RESULT
-        ===================================================== */}
+        {/* RESULT */}
 
         {
           result && (
             <>
-
-              {/* RESULT TITLE */}
 
               <div
                 className="
@@ -884,7 +923,7 @@ export default function Home() {
                       font-bold
                     "
                   >
-                    Scan Result
+                    2026 Scan Result
                   </h3>
 
                   <p
@@ -919,9 +958,7 @@ export default function Home() {
               </div>
 
 
-              {/* =================================================
-                  STATS
-              ================================================= */}
+              {/* STATS */}
 
               <section
                 className="
@@ -938,7 +975,7 @@ export default function Home() {
                       .bridgeTx
                   }
 
-                  sub="Source transactions"
+                  sub="2026 source transactions"
                 />
 
                 <StatCard
@@ -979,9 +1016,7 @@ export default function Home() {
               </section>
 
 
-              {/* =================================================
-                  TABLE
-              ================================================= */}
+              {/* TABLE */}
 
               <section
                 className="
@@ -1024,10 +1059,9 @@ export default function Home() {
                         text-slate-500
                       "
                     >
-                      {
+                      2026年 · {
                         result.rows.length
-                      }
-                      件
+                      }件
                     </p>
                   </div>
 
@@ -1068,8 +1102,6 @@ export default function Home() {
                     <button
                       disabled
 
-                      title="次のSTEPで実装します"
-
                       className="
                         rounded-lg
                         bg-indigo-100
@@ -1086,501 +1118,456 @@ export default function Home() {
                 </div>
 
 
-                <div
-                  className="
-                    overflow-x-auto
-                  "
-                >
-                  <table
-                    className="
-                      w-full
-                      min-w-[1450px]
-                      text-left
-                      text-sm
-                    "
-                  >
-                    <thead
+                {
+                  result.rows.length ===
+                  0 ? (
+                    <div
                       className="
-                        bg-slate-50
-                        text-xs
-                        uppercase
-                        tracking-wide
-                        text-slate-500
+                        px-6
+                        py-16
+                        text-center
                       "
                     >
-                      <tr>
-                        <th
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          Date
-                        </th>
+                      <p
+                        className="
+                          text-lg
+                          font-semibold
+                          text-slate-700
+                        "
+                      >
+                        2026年のRhino Bridge TXは
+                        見つかりませんでした
+                      </p>
 
-                        <th
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          Route
-                        </th>
+                      <p
+                        className="
+                          mt-2
+                          text-sm
+                          text-slate-400
+                        "
+                      >
+                        現在の検索対象は2026年分のみです。
+                      </p>
+                    </div>
+                  ) : (
 
-                        <th
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          Token
-                        </th>
-
-                        <th
-                          className="
-                            px-5
-                            py-4
-                            text-right
-                          "
-                        >
-                          Amount In
-                        </th>
-
-                        <th
-                          className="
-                            px-5
-                            py-4
-                            text-right
-                          "
-                        >
-                          Amount Out
-                        </th>
-
-                        <th
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          Confidence
-                        </th>
-
-                        <th
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          Score
-                        </th>
-
-                        <th
-                          className="
-                            px-5
-                            py-4
-                          "
-                        >
-                          Bridge TX
-                        </th>
-                      </tr>
-                    </thead>
-
-
-                    <tbody
+                    <div
                       className="
-                        divide-y
-                        divide-slate-100
+                        overflow-x-auto
                       "
                     >
-                      {
-                        result.rows.map(
-                          (
-                            row,
-                            index
-                          ) => (
-                            <tr
-                              key={
-                                row.sourceTx ||
-                                index
-                              }
+                      <table
+                        className="
+                          w-full
+                          min-w-[1350px]
+                          text-left
+                          text-sm
+                        "
+                      >
+                        <thead
+                          className="
+                            bg-slate-50
+                            text-xs
+                            uppercase
+                            tracking-wide
+                            text-slate-500
+                          "
+                        >
+                          <tr>
+                            <th className="px-5 py-4">
+                              Date
+                            </th>
 
+                            <th className="px-5 py-4">
+                              Route
+                            </th>
+
+                            <th className="px-5 py-4">
+                              Token
+                            </th>
+
+                            <th
                               className="
-                                transition
-                                hover:bg-slate-50
+                                px-5
+                                py-4
+                                text-right
                               "
                             >
+                              Amount In
+                            </th>
 
-                              {/* DATE */}
+                            <th
+                              className="
+                                px-5
+                                py-4
+                                text-right
+                              "
+                            >
+                              Amount Out
+                            </th>
 
-                              <td
-                                className="
-                                  whitespace-nowrap
-                                  px-5
-                                  py-4
-                                  text-xs
-                                  text-slate-500
-                                "
-                              >
-                                {
-                                  row.dateJst
-                                }
-                              </td>
+                            <th className="px-5 py-4">
+                              Confidence
+                            </th>
+
+                            <th className="px-5 py-4">
+                              Bridge TX
+                            </th>
+                          </tr>
+                        </thead>
 
 
-                              {/* ROUTE */}
+                        <tbody
+                          className="
+                            divide-y
+                            divide-slate-100
+                          "
+                        >
+                          {
+                            result.rows.map(
+                              (
+                                row,
+                                index
+                              ) => (
+                                <tr
+                                  key={
+                                    row.sourceTx ||
+                                    index
+                                  }
 
-                              <td
-                                className="
-                                  whitespace-nowrap
-                                  px-5
-                                  py-4
-                                "
-                              >
-                                <div
                                   className="
-                                    flex
-                                    items-center
-                                    gap-2
-                                    font-medium
+                                    transition
+                                    hover:bg-slate-50
                                   "
                                 >
-                                  <span>
-                                    {
-                                      row.fromChain
-                                    }
-                                  </span>
-
-                                  <span
+                                  <td
                                     className="
-                                      text-slate-400
+                                      whitespace-nowrap
+                                      px-5
+                                      py-4
+                                      text-xs
+                                      text-slate-500
                                     "
                                   >
-                                    →
-                                  </span>
-
-                                  <span>
                                     {
-                                      row.toChain ||
-                                      "?"
+                                      row.dateJst
                                     }
-                                  </span>
-                                </div>
-                              </td>
+                                  </td>
 
 
-                              {/* TOKEN */}
+                                  <td
+                                    className="
+                                      whitespace-nowrap
+                                      px-5
+                                      py-4
+                                    "
+                                  >
+                                    <div
+                                      className="
+                                        flex
+                                        items-center
+                                        gap-2
+                                        font-medium
+                                      "
+                                    >
+                                      <span>
+                                        {
+                                          row.fromChain
+                                        }
+                                      </span>
 
-                              <td
-                                className="
-                                  px-5
-                                  py-4
-                                "
-                              >
-                                <span
-                                  className="
-                                    rounded-md
-                                    bg-slate-100
-                                    px-2
-                                    py-1
-                                    font-mono
-                                    text-xs
-                                    font-semibold
-                                  "
-                                >
-                                  {
-                                    row.token ||
-                                    "?"
-                                  }
-                                </span>
-                              </td>
+                                      <span
+                                        className="
+                                          text-slate-400
+                                        "
+                                      >
+                                        →
+                                      </span>
 
-
-                              {/* AMOUNT IN */}
-
-                              <td
-                                className="
-                                  px-5
-                                  py-4
-                                  text-right
-                                  font-mono
-                                  text-xs
-                                "
-                              >
-                                {
-                                  row.amountIn
-                                }
-                              </td>
+                                      <span>
+                                        {
+                                          row.toChain ||
+                                          "?"
+                                        }
+                                      </span>
+                                    </div>
+                                  </td>
 
 
-                              {/* AMOUNT OUT */}
+                                  <td
+                                    className="
+                                      px-5
+                                      py-4
+                                    "
+                                  >
+                                    <span
+                                      className="
+                                        rounded-md
+                                        bg-slate-100
+                                        px-2
+                                        py-1
+                                        font-mono
+                                        text-xs
+                                        font-semibold
+                                      "
+                                    >
+                                      {
+                                        row.token ||
+                                        "?"
+                                      }
+                                    </span>
+                                  </td>
 
-                              <td
-                                className="
-                                  px-5
-                                  py-4
-                                  text-right
-                                  font-mono
-                                  text-xs
-                                "
-                              >
-                                {
-                                  row.amountOut ||
-                                  "—"
-                                }
-                              </td>
 
-
-                              {/* CONFIDENCE */}
-
-                              <td
-                                className="
-                                  px-5
-                                  py-4
-                                "
-                              >
-                                <span
-                                  className={
-                                    `
-                                      rounded-full
-                                      px-2.5
-                                      py-1
+                                  <td
+                                    className="
+                                      px-5
+                                      py-4
+                                      text-right
+                                      font-mono
                                       text-xs
-                                      font-semibold
-                                      ${
-                                        badgeStyle(
+                                    "
+                                  >
+                                    {
+                                      row.amountIn
+                                    }
+                                  </td>
+
+
+                                  <td
+                                    className="
+                                      px-5
+                                      py-4
+                                      text-right
+                                      font-mono
+                                      text-xs
+                                    "
+                                  >
+                                    {
+                                      row.amountOut ||
+                                      "—"
+                                    }
+                                  </td>
+
+
+                                  <td
+                                    className="
+                                      px-5
+                                      py-4
+                                    "
+                                  >
+                                    <span
+                                      className={
+                                        `
+                                          rounded-full
+                                          px-2.5
+                                          py-1
+                                          text-xs
+                                          font-semibold
+                                          ${
+                                            badgeStyle(
+                                              row
+                                            )
+                                          }
+                                        `
+                                      }
+                                    >
+                                      {
+                                        badgeLabel(
                                           row
                                         )
                                       }
-                                    `
-                                  }
-                                >
-                                  {
-                                    badgeLabel(
-                                      row
-                                    )
-                                  }
-                                </span>
-                              </td>
+                                    </span>
+                                  </td>
 
 
-                              {/* SCORE */}
+                                  {/* BRIDGE TX */}
 
-                              <td
-                                className="
-                                  px-5
-                                  py-4
-                                  font-mono
-                                  text-xs
-                                  text-slate-500
-                                "
-                              >
-                                {
-                                  row.score ??
-                                  "—"
-                                }
-                              </td>
-
-
-                              {/* =============================================
-                                  BRIDGE TX
-                              ============================================= */}
-
-                              <td
-                                className="
-                                  px-5
-                                  py-4
-                                "
-                              >
-                                <div
-                                  className="
-                                    flex
-                                    min-w-[320px]
-                                    items-center
-                                    gap-3
-                                  "
-                                >
-
-                                  {/* SOURCE */}
-
-                                  <div
+                                  <td
                                     className="
-                                      flex
-                                      min-w-0
-                                      flex-col
-                                      gap-1
+                                      px-5
+                                      py-4
                                     "
                                   >
-                                    <span
+                                    <div
                                       className="
-                                        text-[10px]
-                                        font-semibold
-                                        uppercase
-                                        tracking-wide
-                                        text-slate-400
+                                        flex
+                                        min-w-[320px]
+                                        items-center
+                                        gap-3
                                       "
                                     >
-                                      Source
-                                    </span>
 
-                                    {
-                                      row.sourceTx ? (
-                                        <a
-                                          href={
-                                            explorerTxUrl(
-                                              row.fromChain,
-                                              row.sourceTx
-                                            )
-                                          }
+                                      {/* SOURCE */}
 
-                                          target="_blank"
-
-                                          rel="noopener noreferrer"
-
-                                          title={
-                                            row.sourceTx
-                                          }
-
-                                          className="
-                                            rounded-md
-                                            bg-indigo-50
-                                            px-2
-                                            py-1
-                                            font-mono
-                                            text-xs
-                                            font-medium
-                                            text-indigo-600
-                                            transition
-                                            hover:bg-indigo-100
-                                            hover:underline
-                                          "
-                                        >
-                                          {
-                                            shortTx(
-                                              row.sourceTx
-                                            )
-                                          }
-                                        </a>
-                                      ) : (
+                                      <div
+                                        className="
+                                          flex
+                                          flex-col
+                                          gap-1
+                                        "
+                                      >
                                         <span
                                           className="
+                                            text-[10px]
+                                            font-semibold
+                                            uppercase
+                                            tracking-wide
                                             text-slate-400
                                           "
                                         >
-                                          —
+                                          Source
                                         </span>
-                                      )
-                                    }
-                                  </div>
+
+                                        {
+                                          row.sourceTx ? (
+                                            <a
+                                              href={
+                                                explorerTxUrl(
+                                                  row.fromChain,
+                                                  row.sourceTx
+                                                )
+                                              }
+
+                                              target="_blank"
+
+                                              rel="noopener noreferrer"
+
+                                              title={
+                                                row.sourceTx
+                                              }
+
+                                              className="
+                                                rounded-md
+                                                bg-indigo-50
+                                                px-2
+                                                py-1
+                                                font-mono
+                                                text-xs
+                                                font-medium
+                                                text-indigo-600
+                                                hover:bg-indigo-100
+                                                hover:underline
+                                              "
+                                            >
+                                              {
+                                                shortTx(
+                                                  row.sourceTx
+                                                )
+                                              }
+                                            </a>
+                                          ) : (
+                                            "—"
+                                          )
+                                        }
+                                      </div>
 
 
-                                  {/* ARROW */}
-
-                                  <div
-                                    className="
-                                      mt-4
-                                      text-lg
-                                      text-slate-300
-                                    "
-                                  >
-                                    →
-                                  </div>
+                                      <div
+                                        className="
+                                          mt-4
+                                          text-lg
+                                          text-slate-300
+                                        "
+                                      >
+                                        →
+                                      </div>
 
 
-                                  {/* DESTINATION */}
+                                      {/* DESTINATION */}
 
-                                  <div
-                                    className="
-                                      flex
-                                      min-w-0
-                                      flex-col
-                                      gap-1
-                                    "
-                                  >
-                                    <span
-                                      className="
-                                        text-[10px]
-                                        font-semibold
-                                        uppercase
-                                        tracking-wide
-                                        text-slate-400
-                                      "
-                                    >
-                                      Destination
-                                    </span>
-
-                                    {
-                                      row.destinationTx &&
-                                      row.toChain ? (
-                                        <a
-                                          href={
-                                            explorerTxUrl(
-                                              row.toChain,
-                                              row.destinationTx
-                                            )
-                                          }
-
-                                          target="_blank"
-
-                                          rel="noopener noreferrer"
-
-                                          title={
-                                            row.destinationTx
-                                          }
-
-                                          className="
-                                            rounded-md
-                                            bg-emerald-50
-                                            px-2
-                                            py-1
-                                            font-mono
-                                            text-xs
-                                            font-medium
-                                            text-emerald-700
-                                            transition
-                                            hover:bg-emerald-100
-                                            hover:underline
-                                          "
-                                        >
-                                          {
-                                            shortTx(
-                                              row.destinationTx
-                                            )
-                                          }
-                                        </a>
-                                      ) : (
+                                      <div
+                                        className="
+                                          flex
+                                          flex-col
+                                          gap-1
+                                        "
+                                      >
                                         <span
                                           className="
-                                            rounded-md
-                                            bg-slate-100
-                                            px-2
-                                            py-1
-                                            font-mono
-                                            text-xs
+                                            text-[10px]
+                                            font-semibold
+                                            uppercase
+                                            tracking-wide
                                             text-slate-400
                                           "
                                         >
-                                          —
+                                          Destination
                                         </span>
-                                      )
-                                    }
-                                  </div>
 
-                                </div>
-                              </td>
+                                        {
+                                          row.destinationTx &&
+                                          row.toChain ? (
+                                            <a
+                                              href={
+                                                explorerTxUrl(
+                                                  row.toChain,
+                                                  row.destinationTx
+                                                )
+                                              }
 
-                            </tr>
-                          )
-                        )
-                      }
-                    </tbody>
-                  </table>
-                </div>
+                                              target="_blank"
+
+                                              rel="noopener noreferrer"
+
+                                              title={
+                                                row.destinationTx
+                                              }
+
+                                              className="
+                                                rounded-md
+                                                bg-emerald-50
+                                                px-2
+                                                py-1
+                                                font-mono
+                                                text-xs
+                                                font-medium
+                                                text-emerald-700
+                                                hover:bg-emerald-100
+                                                hover:underline
+                                              "
+                                            >
+                                              {
+                                                shortTx(
+                                                  row.destinationTx
+                                                )
+                                              }
+                                            </a>
+                                          ) : (
+                                            <span
+                                              className="
+                                                rounded-md
+                                                bg-slate-100
+                                                px-2
+                                                py-1
+                                                font-mono
+                                                text-xs
+                                                text-slate-400
+                                              "
+                                            >
+                                              —
+                                            </span>
+                                          )
+                                        }
+                                      </div>
+
+                                    </div>
+                                  </td>
+
+                                </tr>
+                              )
+                            )
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                }
+
               </section>
 
 
-              {/* =================================================
-                  DETAILS
-              ================================================= */}
+              {/* DETAILS */}
 
               <section
                 className="
@@ -1590,7 +1577,6 @@ export default function Home() {
                   lg:grid-cols-2
                 "
               >
-
                 <div
                   className="
                     rounded-2xl
@@ -1616,6 +1602,11 @@ export default function Home() {
                       text-sm
                     "
                   >
+                    <InfoRow
+                      label="Period"
+                      value="2026 JST"
+                    />
+
                     <InfoRow
                       label="Incoming DB"
 
@@ -1680,32 +1671,29 @@ export default function Home() {
                   >
                     <p>
                       🟢 VERY HIGH —
-                      時刻・金額・Token・受取先が強く一致
+                      強く一致
                     </p>
 
                     <p>
                       🔵 HIGH —
-                      高確率のDestination候補
+                      高確率
                     </p>
 
                     <p>
                       🟡 REVIEW —
-                      自動確定せず確認を推奨
+                      手動確認推奨
                     </p>
 
                     <p>
                       ⚪ UNRESOLVED —
-                      Destinationを特定できません
+                      Destination未特定
                     </p>
                   </div>
                 </div>
-
               </section>
 
 
-              {/* =================================================
-                  WARNINGS
-              ================================================= */}
+              {/* WARNINGS */}
 
               {
                 result.warnings.length >
@@ -1728,7 +1716,7 @@ export default function Home() {
                         text-amber-800
                       "
                     >
-                      API warnings (
+                      Coverage notes (
                       {
                         result.warnings
                           .length
@@ -1740,6 +1728,7 @@ export default function Home() {
                       className="
                         mt-3
                         space-y-2
+                        break-words
                         text-xs
                         text-amber-700
                       "
@@ -1772,10 +1761,6 @@ export default function Home() {
         }
 
 
-        {/* =====================================================
-            FOOTER
-        ===================================================== */}
-
         <footer
           className="
             py-10
@@ -1785,7 +1770,7 @@ export default function Home() {
           "
         >
           Rhino Bridge History Scanner ·
-          Read-only blockchain analysis
+          2026 JST · Read-only blockchain analysis
         </footer>
 
       </div>
@@ -1864,6 +1849,7 @@ function InfoRow({
       className="
         flex
         justify-between
+        gap-4
         border-b
         border-slate-100
         pb-2
@@ -1879,6 +1865,7 @@ function InfoRow({
 
       <span
         className="
+          text-right
           font-mono
           font-semibold
         "
